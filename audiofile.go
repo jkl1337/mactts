@@ -8,7 +8,7 @@ package mactts
 
 extern OSStatus go_audiofile_readproc(void *data, SInt64 inPosition, UInt32 requestCount, void *buffer, UInt32 *actualCount);
 extern OSStatus go_audiofile_writeproc(void *data, SInt64 inPosition, UInt32 requestCount, void *buffer, UInt32 *actualCount);
-extern OSStatus go_audiofile_setsizeproc(void *data, SInt64 inSize);
+extern SInt64 go_audiofile_getsizeproc(void *data);
 */
 import "C"
 import "fmt"
@@ -17,9 +17,10 @@ import "io"
 import "reflect"
 import "runtime"
 
-//export go_audiofile_setsizeproc
-func go_audiofile_setsizeproc(data unsafe.Pointer, inSize C.SInt64) C.OSStatus {
-	return C.OSStatus(0)
+//export go_audiofile_getsizeproc
+func go_audiofile_getsizeproc(data unsafe.Pointer) C.SInt64 {
+	af := (*AudioFile)(data)
+	return C.SInt64(af.fileSize)
 }
 
 //export go_audiofile_readproc
@@ -52,11 +53,17 @@ func go_audiofile_writeproc(data unsafe.Pointer, inPosition C.SInt64, requestCou
 		Cap: length,
 	}
 	bslice := *(*[]byte)(unsafe.Pointer(&hdr))
-	n, err := af.target.WriteAt(bslice, int64(inPosition))
+	npos := int64(inPosition)
+
+	n, err := af.target.WriteAt(bslice, npos)
 	*actualCount = C.UInt32(n)
 	if err != nil {
 		return C.kAudioFileUnspecifiedError
 	}
+	if npos + int64(n) > af.fileSize {
+		af.fileSize = npos + int64(n)
+	}
+
 	return C.OSStatus(0)
 }
 
@@ -81,6 +88,7 @@ type ReadWriterAt interface {
 type AudioFile struct {
 	id C.AudioFileID
 	target ReadWriterAt
+	fileSize int64
 }
 
 // NewOutputWaveFile opens a CoreAudio WAVE file suitable for output to target
@@ -104,7 +112,7 @@ func NewOutputWaveFile(target ReadWriterAt, rate float64, numchan int, numbits i
 		mBitsPerChannel: C.UInt32(numbits),
 	}
 	stat := C.AudioFileInitializeWithCallbacks(unsafe.Pointer(&af), (*[0]byte)(C.go_audiofile_readproc), (*[0]byte)(C.go_audiofile_writeproc),
-		nil, nil, C.kAudioFileWAVEType, &asbd, 0, &af.id)
+		(*[0]byte)(C.go_audiofile_getsizeproc), nil, C.kAudioFileWAVEType, &asbd, 0, &af.id)
 	if stat != 0 {
 		return nil, osStatus(stat)
 	}
@@ -156,6 +164,7 @@ func (eaf *ExtAudioFile) Close() error {
 	}
 	stat :=	C.ExtAudioFileDispose(eaf.ceaf)
 	eaf.ceaf = nil
+	eaf.af = nil
 	return osStatus(stat)
 }
 
