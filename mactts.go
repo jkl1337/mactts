@@ -272,7 +272,11 @@ func (c* Channel) SetVolume(volume float64) error {
 
 // SetExtAudioFile sets the channel's output destination to an extended audio file, or back to the speakers, if eaf is nil.
 func (c *Channel) SetExtAudioFile(eaf *ExtAudioFile) error {
-	cfn := C.CFNumberCreate(nil, C.kCFNumberLongType, unsafe.Pointer(&eaf.ceaf))
+	var cref unsafe.Pointer
+	if eaf != nil {
+		cref = unsafe.Pointer(eaf.ceaf)
+	}
+	cfn := C.CFNumberCreate(nil, C.kCFNumberLongType, unsafe.Pointer(&cref))
 	defer C.CFRelease(C.CFTypeRef(cfn))
 	return osError(C.SetSpeechProperty(c.csc, C.kSpeechOutputToExtAudioFileProperty, C.CFTypeRef(cfn)))
 }
@@ -291,6 +295,7 @@ func (c *Channel) Close() error {
 	}
 	oserr := C.DisposeSpeechChannel(c.csc)
 	c.csc = nil
+	runtime.SetFinalizer(c, nil)
 	return osError(oserr)
 }
 
