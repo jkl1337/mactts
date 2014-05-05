@@ -1,15 +1,15 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"strconv"
-	"io"
 )
 
 // ResponseBuffer provides an in-memory content buffer for HTTP requests while also implementing the
 // ReaderAt and WriterAt interfaces
 type ResponseBuffer struct {
-	buf []byte
+	buf    []byte
 	status int
 	header http.Header
 }
@@ -17,13 +17,13 @@ type ResponseBuffer struct {
 // grow grows the buffer to guarantee space for n more bytes, increasing the length to accomdate them
 func (rb *ResponseBuffer) grow(n int) int {
 	m := len(rb.buf)
-	if m + n > cap(rb.buf) {
+	if m+n > cap(rb.buf) {
 		var buf []byte
-		buf = make([]byte, 2*cap(rb.buf) + n)
+		buf = make([]byte, 2*cap(rb.buf)+n)
 		copy(buf, rb.buf)
 		rb.buf = buf
 	}
-	rb.buf = rb.buf[0 : m + n]
+	rb.buf = rb.buf[0 : m+n]
 	return m
 }
 

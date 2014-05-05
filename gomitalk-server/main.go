@@ -6,13 +6,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/jkl1337/mactts"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"runtime/debug"
 	"strings"
+
+	"github.com/jkl1337/mactts"
 )
 
 const (
@@ -170,10 +171,10 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 }
 
 type Voice struct {
-	spec mactts.VoiceSpec
-	Name string `json:"name"`
+	spec   mactts.VoiceSpec
+	Name   string `json:"name"`
 	Gender string `json:"gender"`
-	Age int `json:"age"`
+	Age    int    `json:"age"`
 }
 
 var voices []Voice
@@ -187,7 +188,7 @@ func loadVoices() error {
 	vs := make([]Voice, n)
 	vsm := make(map[string]*Voice)
 	for i := 0; i < n; i++ {
-		v, err := mactts.GetVoice(i+1)
+		v, err := mactts.GetVoice(i + 1)
 		if err != nil {
 			return err
 		}
@@ -197,10 +198,10 @@ func loadVoices() error {
 		}
 		name := desc.Name()
 		vs[i] = Voice{
-			spec: *v,
-			Name: name,
+			spec:   *v,
+			Name:   name,
 			Gender: desc.Gender().String(),
-			Age: desc.Age(),
+			Age:    desc.Age(),
 		}
 		vsm[name] = &vs[i]
 	}
@@ -212,7 +213,7 @@ func loadVoices() error {
 func voicesHandler(resp http.ResponseWriter, req *http.Request) error {
 	v := struct {
 		Voices []Voice `json:"voices"`
-	}{ Voices: voices }
+	}{Voices: voices}
 	resp.Header().Set("Content-Type", jsonMIMEType)
 	json.NewEncoder(resp).Encode(&v)
 	return nil

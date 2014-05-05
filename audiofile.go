@@ -29,8 +29,8 @@ func go_audiofile_readproc(data unsafe.Pointer, inPosition C.SInt64, requestCoun
 	length := int(requestCount)
 	hdr := reflect.SliceHeader{
 		Data: uintptr(buffer),
-		Len: length,
-		Cap: length,
+		Len:  length,
+		Cap:  length,
 	}
 	bslice := *(*[]byte)(unsafe.Pointer(&hdr))
 	n, err := af.target.ReadAt(bslice, int64(inPosition))
@@ -49,8 +49,8 @@ func go_audiofile_writeproc(data unsafe.Pointer, inPosition C.SInt64, requestCou
 	length := int(requestCount)
 	hdr := reflect.SliceHeader{
 		Data: uintptr(buffer),
-		Len: length,
-		Cap: length,
+		Len:  length,
+		Cap:  length,
 	}
 	bslice := *(*[]byte)(unsafe.Pointer(&hdr))
 	npos := int64(inPosition)
@@ -60,7 +60,7 @@ func go_audiofile_writeproc(data unsafe.Pointer, inPosition C.SInt64, requestCou
 	if err != nil {
 		return C.kAudioFileUnspecifiedError
 	}
-	if npos + int64(n) > af.fileSize {
+	if npos+int64(n) > af.fileSize {
 		af.fileSize = npos + int64(n)
 	}
 
@@ -86,8 +86,8 @@ type ReadWriterAt interface {
 
 // AudioFile wraps a CoreAudio AudioFile handle and allows handling file operations within Go.
 type AudioFile struct {
-	id C.AudioFileID
-	target ReadWriterAt
+	id       C.AudioFileID
+	target   ReadWriterAt
 	fileSize int64
 }
 
@@ -100,16 +100,16 @@ func NewOutputWaveFile(target ReadWriterAt, rate float64, numchan int, numbits i
 	var af = AudioFile{
 		target: target,
 	}
-	bpf := C.UInt32(numbits*numchan/8)
-	var asbd  = C.AudioStreamBasicDescription{
-		mSampleRate: C.Float64(rate),
-		mFormatID: C.kAudioFormatLinearPCM,
-		mFormatFlags: C.kAudioFormatFlagIsSignedInteger | C.kAudioFormatFlagIsPacked,
-		mBytesPerPacket: bpf,
-		mFramesPerPacket: 1,
-		mBytesPerFrame: bpf,
+	bpf := C.UInt32(numbits * numchan / 8)
+	var asbd = C.AudioStreamBasicDescription{
+		mSampleRate:       C.Float64(rate),
+		mFormatID:         C.kAudioFormatLinearPCM,
+		mFormatFlags:      C.kAudioFormatFlagIsSignedInteger | C.kAudioFormatFlagIsPacked,
+		mBytesPerPacket:   bpf,
+		mFramesPerPacket:  1,
+		mBytesPerFrame:    bpf,
 		mChannelsPerFrame: C.UInt32(numchan),
-		mBitsPerChannel: C.UInt32(numbits),
+		mBitsPerChannel:   C.UInt32(numbits),
 	}
 	stat := C.AudioFileInitializeWithCallbacks(unsafe.Pointer(&af), (*[0]byte)(C.go_audiofile_readproc), (*[0]byte)(C.go_audiofile_writeproc),
 		(*[0]byte)(C.go_audiofile_getsizeproc), nil, C.kAudioFileWAVEType, &asbd, 0, &af.id)
@@ -131,7 +131,7 @@ func (af *AudioFile) ExtAudioFile() (*ExtAudioFile, error) {
 	if stat != 0 {
 		return nil, osStatus(stat)
 	}
-	runtime.SetFinalizer(&eaf, func (eaf *ExtAudioFile) {
+	runtime.SetFinalizer(&eaf, func(eaf *ExtAudioFile) {
 		if eaf.ceaf != nil {
 			C.ExtAudioFileDispose(eaf.ceaf)
 		}
@@ -154,7 +154,7 @@ func (af *AudioFile) Close() error {
 // ExtAudioFile wraps a CoreAudio ExtAudioFile handle.
 type ExtAudioFile struct {
 	ceaf C.ExtAudioFileRef
-	af *AudioFile
+	af   *AudioFile
 }
 
 // Close closes the ExtAudioFile and releases the reference to it.
@@ -162,9 +162,8 @@ func (eaf *ExtAudioFile) Close() error {
 	if eaf.ceaf == nil {
 		return nil
 	}
-	stat :=	C.ExtAudioFileDispose(eaf.ceaf)
+	stat := C.ExtAudioFileDispose(eaf.ceaf)
 	eaf.ceaf = nil
 	eaf.af = nil
 	return osStatus(stat)
 }
-

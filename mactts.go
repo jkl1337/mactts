@@ -264,7 +264,7 @@ func (c *Channel) SetPitchMod(mod float64) error {
 // Speech volumes are expressed in values ranging from 0.0 through 1.0. A value of 0.0 corresponds to silence, and a value of 1.0
 // corresponds to the maximum possible volume. Volume units lie on a scale that is linear with amplitude or voltage. A doubling
 // of perceived loudness corresponds to a doubling of the volume.
-func (c* Channel) SetVolume(volume float64) error {
+func (c *Channel) SetVolume(volume float64) error {
 	cfn := C.CFNumberCreate(nil, C.kCFNumberFloat64Type, unsafe.Pointer(&volume))
 	defer C.CFRelease(C.CFTypeRef(cfn))
 	return osError(C.SetSpeechProperty(c.csc, C.kSpeechVolumeProperty, C.CFTypeRef(cfn)))
