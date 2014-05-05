@@ -5,6 +5,9 @@ package mactts
 #cgo LDFLAGS: -framework ApplicationServices
 #include <SpeechSynthesis.h>
 
+extern CFStringRef kSpeechVoiceName;
+extern CFStringRef kSpeechVoiceLocaleIdentifier;
+
 extern void go_speechdone_cb(SpeechChannel csc, long refcon);
 */
 import "C"
@@ -148,6 +151,14 @@ func (vd VoiceDescription) Gender() Gender {
 // Age is the approximate age in years of the individual represented by the voice.
 func (vd VoiceDescription) Age() int {
 	return int(vd.cvd.age)
+}
+
+func (vd VoiceDescription) Language() int {
+	return int(vd.cvd.language)
+}
+
+func (vd VoiceDescription) Region() int {
+	return int(vd.cvd.region)
 }
 
 // Description provides access to the metadata for the voice.
