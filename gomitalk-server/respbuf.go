@@ -7,7 +7,7 @@ import (
 )
 
 // ResponseBuffer provides an in-memory content buffer for HTTP requests while also implementing the
-// ReaderAt and WriterAt interfaces
+// ReaderAt and WriterAt interfaces in addition to the http.ResponseWriter interface.
 type ResponseBuffer struct {
 	buf    []byte
 	status int
@@ -38,6 +38,7 @@ func (rb *ResponseBuffer) Header() http.Header {
 	return rb.header
 }
 
+// WriteTo writes the buffered contents and all http header information to another http.ResponseWriter.
 func (rb *ResponseBuffer) WriteTo(w http.ResponseWriter) error {
 	for k, v := range rb.header {
 		w.Header()[k] = v
