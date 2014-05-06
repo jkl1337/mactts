@@ -13,6 +13,8 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"time"
+
 	"github.com/jkl1337/mactts"
 )
 
@@ -163,16 +165,21 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 	if err = sc.SpeakString(msg); err != nil {
 		return nil
 	}
-	<-done
-	sc.Close()
+	select {
+	case <-done:
+		sc.Close()
+	case <-time.After(1 * time.Minute):
+		return errors.New("timed out synthesizing speech")
+	}
 
-	resp.Header().Set("Content-Type", "audio/wave")
+	resp.Header().Set("Content-Type", "audio/wav")
 	return nil
 }
 
 type Voice struct {
 	spec   mactts.VoiceSpec
 	Name   string `json:"name"`
+	Locale string `json:"locale,omitempty"`
 	Gender string `json:"gender"`
 	Age    int    `json:"age"`
 }
