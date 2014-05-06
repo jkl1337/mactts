@@ -5,7 +5,15 @@ package mactts
 #cgo LDFLAGS: -framework ApplicationServices
 #include <SpeechSynthesis.h>
 
+enum {
+  soVoiceAttributes = 'attr'
+};
+
 extern CFStringRef kSpeechVoiceName;
+extern CFStringRef kSpeechVoiceIdentifier;
+extern CFStringRef kSpeechVoiceDemoText;
+extern CFStringRef kSpeechVoiceAge;
+extern CFStringRef kSpeechVoiceGender;
 extern CFStringRef kSpeechVoiceLocaleIdentifier;
 
 extern void go_speechdone_cb(SpeechChannel csc, long refcon);
@@ -15,6 +23,7 @@ import "runtime"
 import "errors"
 import "fmt"
 import "unsafe"
+import "reflect"
 
 //export go_speechdone_cb
 func go_speechdone_cb(csc C.SpeechChannel, refcon C.long) {
@@ -25,9 +34,7 @@ func go_speechdone_cb(csc C.SpeechChannel, refcon C.long) {
 }
 
 // VoiceSpec uniquely identifies a speech synthesizer voice on the system.
-type VoiceSpec struct {
-	Creator, Id uint
-}
+type VoiceSpec C.VoiceSpec
 
 // Channel is a independent channel resource for speech synthesis within the synthesizer.
 //
@@ -64,10 +71,29 @@ func osError(oserr C.OSErr) error {
 	return e
 }
 
-// cfstring efficiently creates a CFString from a Go String
+// cfstring efficiently creates a CFString from a Go String.
 func cfstring(s string) C.CFStringRef {
 	n := C.CFIndex(len(s))
 	return C.CFStringCreateWithBytes(nil, *(**C.UInt8)(unsafe.Pointer(&s)), n, C.kCFStringEncodingUTF8, 0)
+}
+
+// cfstringGo creates a Go string for a CoreFoundation string using the CoreFoundation UTF-8 converter.
+func cfstringGo(cfs C.CFStringRef) string {
+	var usedBufLen C.CFIndex
+	rng := C.CFRange{location: C.CFIndex(0), length: C.CFStringGetLength(cfs)}
+	n := int(C.CFStringGetBytes(cfs, rng, C.kCFStringEncodingUTF8, 0, 0, nil, 0, &usedBufLen))
+	if n <= 0 {
+		return ""
+	}
+
+	buf := make([]byte, int(usedBufLen))
+	C.CFStringGetBytes(cfs, rng, C.kCFStringEncodingUTF8, 0, 0, (*C.UInt8)(unsafe.Pointer(&buf[0])), C.CFIndex(len(buf)), &usedBufLen)
+
+	sh := &reflect.StringHeader{
+		Data: uintptr(unsafe.Pointer(&buf[0])),
+		Len:  int(usedBufLen),
+	}
+	return *(*string)(unsafe.Pointer(sh))
 }
 
 // GetVoice returns a voice specification for an index.
@@ -75,14 +101,14 @@ func cfstring(s string) C.CFStringRef {
 // The maximum value of n can be determined by calling NumVoices. If the value of n is invalid (too large or below 1),
 // GetVoice will return nil.
 func GetVoice(n int) (*VoiceSpec, error) {
-	var cvs C.VoiceSpec
-	oserr := C.GetIndVoice(C.SInt16(n), &cvs)
+	var vs VoiceSpec
+	oserr := C.GetIndVoice(C.SInt16(n), (*C.VoiceSpec)(&vs))
 	if oserr == C.voiceNotFound {
 		return nil, nil
 	} else if oserr != 0 {
 		return nil, osError(oserr)
 	}
-	return &VoiceSpec{uint(cvs.creator), uint(cvs.id)}, nil
+	return &vs, nil
 }
 
 // NumVoices determines how many voices are available on the system.
@@ -117,64 +143,97 @@ func (g Gender) String() string {
 }
 
 // VoiceDescription provides metadata for a speech synthesizer voice.
-type VoiceDescription struct {
-	cvd C.VoiceDescription
-}
+type VoiceDescription C.VoiceDescription
 
 // VoiceSpec provides the unique voice specifier for this voice description.
-func (vd VoiceDescription) VoiceSpec() VoiceSpec {
-	return VoiceSpec{uint(vd.cvd.voice.creator), uint(vd.cvd.voice.id)}
+func (vd *VoiceDescription) VoiceSpec() (vs VoiceSpec) {
+	C.MakeVoiceSpec(vd.voice.creator, vd.voice.id, (*C.VoiceSpec)(&vs))
+	return
 }
 
 // Version is the version number of the voice.
-func (vd VoiceDescription) Version() int {
-	return int(vd.cvd.version)
+func (vd *VoiceDescription) Version() int {
+	return int(vd.version)
 }
 
 // Name is the short name of the voice as listed in the Speech Manager.
-func (vd VoiceDescription) Name() string {
-	cvd := vd.cvd
-	return C.GoStringN((*C.char)(unsafe.Pointer(&cvd.name[1])), C.int(cvd.name[0]))
+func (vd *VoiceDescription) Name() string {
+	return C.GoStringN((*C.char)(unsafe.Pointer(&vd.name[1])), C.int(vd.name[0]))
 }
 
 // Comment is additional text information about the voice. Some synthesizers use this field to store an example phrase that can be spoken.
-func (vd VoiceDescription) Comment() string {
-	cvd := vd.cvd
-	return C.GoStringN((*C.char)(unsafe.Pointer(&cvd.comment[1])), C.int(cvd.comment[0]))
+func (vd *VoiceDescription) Comment() string {
+	return C.GoStringN((*C.char)(unsafe.Pointer(&vd.comment[1])), C.int(vd.comment[0]))
 }
 
 // Gender is the gender of the individual represented by the voice.
-func (vd VoiceDescription) Gender() Gender {
-	return Gender(vd.cvd.gender)
+func (vd *VoiceDescription) Gender() Gender {
+	return Gender(vd.gender)
 }
 
 // Age is the approximate age in years of the individual represented by the voice.
-func (vd VoiceDescription) Age() int {
-	return int(vd.cvd.age)
-}
-
-func (vd VoiceDescription) Language() int {
-	return int(vd.cvd.language)
-}
-
-func (vd VoiceDescription) Region() int {
-	return int(vd.cvd.region)
+func (vd *VoiceDescription) Age() int {
+	return int(vd.age)
 }
 
 // Description provides access to the metadata for the voice.
-func (vs *VoiceSpec) Description() (vd VoiceDescription, err error) {
-	var cvs C.VoiceSpec
-	oserr := C.MakeVoiceSpec(C.OSType(vs.Creator), C.OSType(vs.Id), &cvs)
-	if oserr != 0 {
-		err = osError(oserr)
-		return
-	}
-	oserr = C.GetVoiceDescription(&cvs, &vd.cvd, C.long(unsafe.Sizeof(vd.cvd)))
+func (vs VoiceSpec) Description() (vd VoiceDescription, err error) {
+	oserr := C.GetVoiceDescription((*C.VoiceSpec)(&vs), (*C.VoiceDescription)(&vd), C.long(unsafe.Sizeof(vd)))
 	if oserr != 0 {
 		err = osError(oserr)
 		return
 	}
 	return
+}
+
+// VoiceAttributes wraps a CoreFoundation dictionary that contains additional metadata about a voice
+// The information contained that is not avaiable from VoiceDescription includes the system Identifier,
+// and the LocaleIdentifier.
+type VoiceAttributes struct {
+	cfd C.CFDictionaryRef
+}
+
+func (d VoiceAttributes) get(k C.CFStringRef) (s string) {
+	cs := C.CFDictionaryGetValue(d.cfd, unsafe.Pointer(k))
+	if cs != nil {
+		s = cfstringGo(C.CFStringRef(cs))
+	}
+	return
+}
+
+// Name is the short name of the voice as listed in the Speech Manager.
+func (d VoiceAttributes) Name() string {
+	return d.get(C.kSpeechVoiceName)
+}
+
+// Identifier provides a unique string identifying the voice.
+func (d VoiceAttributes) Identifier() string {
+	return d.get(C.kSpeechVoiceIdentifier)
+}
+
+// LocaleIdentifier is the language of the voice.
+func (d VoiceAttributes) LocaleIdentifier() string {
+	return d.get(C.kSpeechVoiceLocaleIdentifier)
+}
+
+// DemoText is additional text information about the voice. Some synthesizers use this field to store an example phrase that can be spoken.
+func (d VoiceAttributes) DemoText() string {
+	return d.get(C.kSpeechVoiceDemoText)
+}
+
+// Attributes provides metadata about the voice.
+// The attributes for a voice are described in the documentation for [NSSpeechSynthesizer attributesForVoice].
+// This functionality is undocumented in the Carbon Speech Synthesis Manager.
+func (vs VoiceSpec) Attributes() (VoiceAttributes, error) {
+	var va VoiceAttributes
+	oserr := C.GetVoiceInfo((*C.VoiceSpec)(&vs), C.soVoiceAttributes, unsafe.Pointer(&va.cfd))
+	if oserr != 0 {
+		return va, osError(oserr)
+	}
+	runtime.SetFinalizer(&va, func(va *VoiceAttributes) {
+		C.CFRelease(C.CFTypeRef(va.cfd))
+	})
+	return va, nil
 }
 
 func disposeSpeechChannel(c *Channel) {
@@ -187,17 +246,7 @@ func disposeSpeechChannel(c *Channel) {
 func NewChannel(voice *VoiceSpec) (*Channel, error) {
 	var c Channel
 
-	var vsp *C.VoiceSpec
-	if voice != nil {
-		var vs C.VoiceSpec
-		oserr := C.MakeVoiceSpec(C.OSType(voice.Creator), C.OSType(voice.Id), &vs)
-		if oserr != 0 {
-			return nil, osError(oserr)
-		}
-		vsp = &vs
-	}
-
-	oserr := C.NewSpeechChannel(vsp, &c.csc)
+	oserr := C.NewSpeechChannel((*C.VoiceSpec)(voice), &c.csc)
 	if oserr != 0 {
 		return nil, osError(oserr)
 	}
