@@ -15,6 +15,7 @@ import (
 
 	"time"
 
+	"bitbucket.org/ww/goautoneg"
 	"github.com/jkl1337/mactts"
 )
 
@@ -116,18 +117,34 @@ func (h apiHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 }
 
 func speechHandler(resp http.ResponseWriter, req *http.Request) error {
-	msg := req.URL.Query().Get("text")
+	msg := req.FormValue("text")
 	if msg == "" {
 		return &httpError{status: http.StatusBadRequest, err: errors.New("missing `text` parameter")}
 	}
 
 	var voice *mactts.VoiceSpec
-	voiceName := req.URL.Query().Get("voice")
+	voiceName := req.FormValue("voice")
 	if voiceName != "" {
 		v := voiceByName[voiceName]
 		if v != nil {
 			voice = &v.spec
 		}
+	}
+
+	sampleRate := 22050.0
+	switch req.FormValue("samplerate") {
+	case "8000":
+		sampleRate = 8000.0
+	case "11025":
+		sampleRate = 11025.0
+	case "16000":
+		sampleRate = 16000.0
+	case "32000":
+		sampleRate = 32000.0
+	case "44100":
+		sampleRate = 44100.0
+	case "48000":
+		sampleRate = 48000.0
 	}
 
 	sc, err := mactts.NewChannel(voice)
@@ -137,7 +154,26 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 	defer sc.Close()
 
 	f := resp.(*ResponseBuffer)
-	af, err := mactts.NewOutputWaveFile(f, 16000.0, 1, 16)
+
+	acceptMimeType := req.FormValue("type")
+	if acceptMimeType == "" {
+		acceptMimeType = req.Header.Get("Accept")
+	}
+	acceptType := goautoneg.Negotiate(acceptMimeType, []string{
+		"audio/wave", "audio/wav", "audio/x-wav", "audio/vnd.wav",
+		"audio/mp4",
+	})
+
+	responseType := "audio/wav"
+	newFileFunc := mactts.NewOutputWAVEFile
+	if acceptType == "audio/mp4" {
+		responseType = "audio/mp4"
+		newFileFunc = mactts.NewOutputAACFile
+	}
+
+	resp.Header().Set("Content-Type", responseType)
+
+	af, err := newFileFunc(f, sampleRate, 1, 16)
 	if err != nil {
 		return err
 	}
@@ -172,7 +208,6 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 		return errors.New("timed out synthesizing speech")
 	}
 
-	resp.Header().Set("Content-Type", "audio/wav")
 	return nil
 }
 
@@ -240,6 +275,6 @@ func main() {
 	}
 
 	http.Handle("/voices", apiHandler(voicesHandler))
-	http.Handle("/speech", apiHandler(speechHandler))
+	http.Handle("/say", apiHandler(speechHandler))
 	log.Fatal(http.ListenAndServe(*httpAddr, nil))
 }
