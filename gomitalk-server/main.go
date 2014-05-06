@@ -203,10 +203,15 @@ func loadVoices() error {
 		if err != nil {
 			return nil
 		}
+		var locale string
+		if attr, err := v.Attributes(); err == nil {
+			locale = attr.LocaleIdentifier()
+		}
 		name := desc.Name()
 		vs[i] = Voice{
 			spec:   *v,
 			Name:   name,
+			Locale: locale,
 			Gender: desc.Gender().String(),
 			Age:    desc.Age(),
 		}
