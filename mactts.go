@@ -17,6 +17,30 @@ extern CFStringRef kSpeechVoiceGender;
 extern CFStringRef kSpeechVoiceLocaleIdentifier;
 
 extern void go_speechdone_cb(SpeechChannel csc, long refcon);
+
+// cfstring_utf8_length returns the number of characters successfully converted to UTF-8 and
+// the bytes required to store them.
+static inline CFIndex cfstring_utf8_length(CFStringRef str, CFIndex *need) {
+  CFIndex n, usedBufLen;
+  CFRange rng = CFRangeMake(0, CFStringGetLength(str));
+
+  return CFStringGetBytes(str, rng, kCFStringEncodingUTF8, 0, 0, NULL, 0, need);
+}
+
+static inline OSErr mactts_set_property_float64(SpeechChannel chan, CFStringRef prop, double n) {
+  CFNumberRef cfn = CFNumberCreate(NULL, kCFNumberFloat64Type, &n);
+  OSErr ret = SetSpeechProperty(chan, prop, cfn);
+  CFRelease(cfn);
+  return ret;
+}
+
+static inline OSErr mactts_set_property_ptr(SpeechChannel chan, CFStringRef prop, void *p) {
+  CFNumberRef cfn = CFNumberCreate(NULL, kCFNumberLongType, &p);
+  OSErr ret = SetSpeechProperty(chan, prop, cfn);
+  CFRelease(cfn);
+  return ret;
+}
+
 */
 import "C"
 import "runtime"
@@ -78,19 +102,22 @@ func cfstring(s string) C.CFStringRef {
 }
 
 // cfstringGo creates a Go string for a CoreFoundation string using the CoreFoundation UTF-8 converter.
+// For short strings this is an efficiency nightmare! In this package this function is not currently used
+// in any critical path.
 func cfstringGo(cfs C.CFStringRef) string {
 	var usedBufLen C.CFIndex
-	rng := C.CFRange{location: C.CFIndex(0), length: C.CFStringGetLength(cfs)}
-	n := int(C.CFStringGetBytes(cfs, rng, C.kCFStringEncodingUTF8, 0, 0, nil, 0, &usedBufLen))
+	n := C.cfstring_utf8_length(cfs, &usedBufLen)
 	if n <= 0 {
 		return ""
 	}
-
+	rng := C.CFRange{location: C.CFIndex(0), length: n}
 	buf := make([]byte, int(usedBufLen))
-	C.CFStringGetBytes(cfs, rng, C.kCFStringEncodingUTF8, 0, 0, (*C.UInt8)(unsafe.Pointer(&buf[0])), C.CFIndex(len(buf)), &usedBufLen)
+
+	bufp := unsafe.Pointer(&buf[0])
+	C.CFStringGetBytes(cfs, rng, C.kCFStringEncodingUTF8, 0, 0, (*C.UInt8)(bufp), C.CFIndex(len(buf)), &usedBufLen)
 
 	sh := &reflect.StringHeader{
-		Data: uintptr(unsafe.Pointer(&buf[0])),
+		Data: uintptr(bufp),
 		Len:  int(usedBufLen),
 	}
 	return *(*string)(unsafe.Pointer(sh))
@@ -251,10 +278,8 @@ func NewChannel(voice *VoiceSpec) (*Channel, error) {
 		return nil, osError(oserr)
 	}
 
-	rcp := &c
-	cfrc := C.CFNumberCreate(nil, C.kCFNumberLongType, unsafe.Pointer(&rcp))
-	defer C.CFRelease(C.CFTypeRef(cfrc))
-	oserr = C.SetSpeechProperty(c.csc, C.kSpeechRefConProperty, C.CFTypeRef(cfrc))
+	refCon := unsafe.Pointer(&c)
+	oserr = C.mactts_set_property_ptr(c.csc, C.kSpeechRefConProperty, refCon)
 	if oserr != 0 {
 		disposeSpeechChannel(&c)
 		return nil, osError(oserr)
@@ -267,9 +292,7 @@ func NewChannel(voice *VoiceSpec) (*Channel, error) {
 // SetDone sets a synthesis completion callback function for the speech channel.
 func (c *Channel) SetDone(done func()) error {
 	cbp := C.go_speechdone_cb
-	cfdc := C.CFNumberCreate(nil, C.kCFNumberLongType, unsafe.Pointer(&cbp))
-	defer C.CFRelease(C.CFTypeRef(cfdc))
-	oserr := C.SetSpeechProperty(c.csc, C.kSpeechSpeechDoneCallBack, C.CFTypeRef(cfdc))
+	oserr := C.mactts_set_property_ptr(c.csc, C.kSpeechSpeechDoneCallBack, cbp)
 	if oserr != 0 {
 		return osError(oserr)
 	}
@@ -314,9 +337,7 @@ func (c *Channel) SetPitchBase(pitch float64) error {
 // a speech pitch value of 46.000, a pitch modulation of 2.000 would mean that the widest possible range of pitches corresponding
 // to the actual frequency of generated text would be 44.000 to 48.000.
 func (c *Channel) SetPitchMod(mod float64) error {
-	cfn := C.CFNumberCreate(nil, C.kCFNumberFloat64Type, unsafe.Pointer(&mod))
-	defer C.CFRelease(C.CFTypeRef(cfn))
-	return osError(C.SetSpeechProperty(c.csc, C.kSpeechPitchModProperty, C.CFTypeRef(cfn)))
+	return osError(C.mactts_set_property_float64(c.csc, C.kSpeechPitchModProperty, C.double(mod)))
 }
 
 // SetVolume sets the speech channel volume.
@@ -325,9 +346,7 @@ func (c *Channel) SetPitchMod(mod float64) error {
 // corresponds to the maximum possible volume. Volume units lie on a scale that is linear with amplitude or voltage. A doubling
 // of perceived loudness corresponds to a doubling of the volume.
 func (c *Channel) SetVolume(volume float64) error {
-	cfn := C.CFNumberCreate(nil, C.kCFNumberFloat64Type, unsafe.Pointer(&volume))
-	defer C.CFRelease(C.CFTypeRef(cfn))
-	return osError(C.SetSpeechProperty(c.csc, C.kSpeechVolumeProperty, C.CFTypeRef(cfn)))
+	return osError(C.mactts_set_property_float64(c.csc, C.kSpeechVolumeProperty, C.double(volume)))
 }
 
 // SetExtAudioFile sets the channel's output destination to an extended audio file, or back to the speakers, if eaf is nil.
@@ -336,9 +355,7 @@ func (c *Channel) SetExtAudioFile(eaf *ExtAudioFile) error {
 	if eaf != nil {
 		cref = unsafe.Pointer(eaf.ceaf)
 	}
-	cfn := C.CFNumberCreate(nil, C.kCFNumberLongType, unsafe.Pointer(&cref))
-	defer C.CFRelease(C.CFTypeRef(cfn))
-	return osError(C.SetSpeechProperty(c.csc, C.kSpeechOutputToExtAudioFileProperty, C.CFTypeRef(cfn)))
+	return osError(C.mactts_set_property_ptr(c.csc, C.kSpeechOutputToExtAudioFileProperty, cref))
 }
 
 // Stop terminates speech generation on the channel immediately.
