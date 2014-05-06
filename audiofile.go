@@ -91,28 +91,13 @@ type AudioFile struct {
 	fileSize int64
 }
 
-// NewOutputWaveFile opens a CoreAudio WAVE file suitable for output to target
-//
-// rate is the sample rate, numchan is the number of channels in the output, and numbits is the number of bits per channel.
-// NOTE: In order to prevent unnecessary copying, the calls to target use buffers that are owned by CoreAudio. This means that
-// slices should not be made of buffers that will outlive the call to the WriteAt method.
-func NewOutputWaveFile(target ReadWriterAt, rate float64, numchan int, numbits int) (*AudioFile, error) {
-	var af = AudioFile{
+func newOutputFile(target ReadWriterAt, asbd *C.AudioStreamBasicDescription, fileType C.AudioFileTypeID) (*AudioFile, error) {
+	af := AudioFile{
 		target: target,
 	}
-	bpf := C.UInt32(numbits * numchan / 8)
-	var asbd = C.AudioStreamBasicDescription{
-		mSampleRate:       C.Float64(rate),
-		mFormatID:         C.kAudioFormatLinearPCM,
-		mFormatFlags:      C.kAudioFormatFlagIsSignedInteger | C.kAudioFormatFlagIsPacked,
-		mBytesPerPacket:   bpf,
-		mFramesPerPacket:  1,
-		mBytesPerFrame:    bpf,
-		mChannelsPerFrame: C.UInt32(numchan),
-		mBitsPerChannel:   C.UInt32(numbits),
-	}
+
 	stat := C.AudioFileInitializeWithCallbacks(unsafe.Pointer(&af), (*[0]byte)(C.go_audiofile_readproc), (*[0]byte)(C.go_audiofile_writeproc),
-		(*[0]byte)(C.go_audiofile_getsizeproc), nil, C.kAudioFileWAVEType, &asbd, 0, &af.id)
+		(*[0]byte)(C.go_audiofile_getsizeproc), nil, fileType, asbd, 0, &af.id)
 	if stat != 0 {
 		return nil, osStatus(stat)
 	}
@@ -122,6 +107,37 @@ func NewOutputWaveFile(target ReadWriterAt, rate float64, numchan int, numbits i
 		}
 	})
 	return &af, nil
+}
+
+// NewOutputWaveFile opens a CoreAudio WAVE file suitable for output to target
+//
+// rate is the sample rate, numchan is the number of channels in the output, and numbits is the number of bits per channel.
+// NOTE: In order to prevent unnecessary copying, the calls to target use buffers that are owned by CoreAudio. This means that
+// slices should not be made of buffers that will outlive the call to the WriteAt method.
+func NewOutputWAVEFile(target ReadWriterAt, rate float64, numchan int, numbits int) (*AudioFile, error) {
+	bpf := C.UInt32(numbits * numchan / 8)
+	asbd := C.AudioStreamBasicDescription{
+		mSampleRate:       C.Float64(rate),
+		mFormatID:         C.kAudioFormatLinearPCM,
+		mFormatFlags:      C.kAudioFormatFlagIsSignedInteger | C.kAudioFormatFlagIsPacked,
+		mBytesPerPacket:   bpf,
+		mFramesPerPacket:  1,
+		mBytesPerFrame:    bpf,
+		mChannelsPerFrame: C.UInt32(numchan),
+		mBitsPerChannel:   C.UInt32(numbits),
+	}
+	return newOutputFile(target, &asbd, C.kAudioFileWAVEType)
+}
+
+func NewOutputAACFile(target ReadWriterAt, rate float64, numchan int, numbits int) (*AudioFile, error) {
+	asbd := C.AudioStreamBasicDescription{
+		mSampleRate:       C.Float64(rate),
+		mFormatID:         C.kAudioFormatMPEG4AAC,
+		mFormatFlags:      C.kMPEG4Object_AAC_Main,
+		mChannelsPerFrame: C.UInt32(numchan),
+		mFramesPerPacket:  1024,
+	}
+	return newOutputFile(target, &asbd, C.kAudioFileM4AType)
 }
 
 // ExtAudioFile returns a ExtAudioFile that wraps the CoreAudio AudioFile
