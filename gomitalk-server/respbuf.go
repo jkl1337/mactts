@@ -8,10 +8,38 @@ import (
 
 // ResponseBuffer provides an in-memory content buffer for HTTP requests while also implementing the
 // ReaderAt and WriterAt interfaces in addition to the http.ResponseWriter interface.
+// ReaderSeeker is implemented to allow byte serving.
 type ResponseBuffer struct {
 	buf    []byte
+	readOfs int
 	status int
 	header http.Header
+}
+
+func (rb *ResponseBuffer) Read(data []byte) (n int, err error) {
+	n = copy(data, rb.buf[rb.readOfs:])
+	rb.readOfs += n
+	if rb.readOfs >= len(rb.buf) {
+		err = io.EOF
+	}
+	return
+}
+
+func (rb *ResponseBuffer) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case 0:
+		rb.readOfs = int(offset)
+	case 1:
+		rb.readOfs += int(offset)
+	case 2:
+		rb.readOfs = len(rb.buf) + int(offset)
+	}
+	if rb.readOfs < 0 {
+		rb.readOfs = 0
+	} else if rb.readOfs > len(rb.buf) {
+		rb.readOfs = len(rb.buf)
+	}
+	return int64(rb.readOfs), nil
 }
 
 // grow grows the buffer to guarantee space for n more bytes, increasing the length to accomdate them
