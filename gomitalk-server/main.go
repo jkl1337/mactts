@@ -212,6 +212,7 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 	case <-done:
 		sc.Close()
 	case <-time.After(1 * time.Minute):
+		sc.Close()
 		return errors.New("timed out synthesizing speech")
 	}
 

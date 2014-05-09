@@ -164,6 +164,7 @@ func (af *AudioFile) Close() error {
 	}
 	stat := C.AudioFileClose(af.id)
 	af.id = nil
+	runtime.SetFinalizer(af, nil)
 	return osStatus(stat)
 }
 
@@ -181,5 +182,6 @@ func (eaf *ExtAudioFile) Close() error {
 	stat := C.ExtAudioFileDispose(eaf.ceaf)
 	eaf.ceaf = nil
 	eaf.af = nil
+	runtime.SetFinalizer(eaf, nil)
 	return osStatus(stat)
 }
