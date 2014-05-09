@@ -2,7 +2,7 @@ mactts
 ======
 
 mactts is a small Golang wrapper for the Mac OSX Speech Synthesis Manager Carbon API.
-This is originally created for the production of TTS speech server demo. While newer versions of Mac OSX ship with the same typical Nuance Vocalizer® there is no matching the utility of the original MacInTalk Pro voices. And when you need them and don't have a real Mac handy, what is one to do?
+This was originally created for the production of TTS speech server demo. While newer versions of Mac OSX ship with the typical Nuance Vocalizer® voices available from many places, there is no matching the utility of the original MacInTalk Pro voices. And when you need them and don't have a real Mac handy, what is one to do?
 
 Usage
 =====
@@ -18,6 +18,6 @@ Now go to http://localhost:8080/speech?text=Hello+World&voice=Hysterical in your
 
 TODO
 ====
-- Finish the server implementation
+- Implement ETags based on parameters (internal and external) to allow easy use in a caching proxy situation.
 - Web frontend API
 - Provide MP4 and Vorbis output so the audio tag can be used on all browsers with compression.
