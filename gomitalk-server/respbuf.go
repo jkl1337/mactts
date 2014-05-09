@@ -66,8 +66,8 @@ func (rb *ResponseBuffer) Header() http.Header {
 	return rb.header
 }
 
-// WriteTo writes the buffered contents and all http header information to another http.ResponseWriter.
-func (rb *ResponseBuffer) WriteTo(w http.ResponseWriter) error {
+// CopyHeaders copies all the headers and Content-Length for this response buffer to target http.ResponseWriter
+func (rb *ResponseBuffer) CopyHeaders(w http.ResponseWriter) {
 	for k, v := range rb.header {
 		w.Header()[k] = v
 	}
@@ -77,6 +77,11 @@ func (rb *ResponseBuffer) WriteTo(w http.ResponseWriter) error {
 	if rb.status != 0 {
 		w.WriteHeader(rb.status)
 	}
+}
+
+// WriteTo writes the buffered contents and all http header information to another http.ResponseWriter.
+func (rb *ResponseBuffer) WriteTo(w http.ResponseWriter) error {
+	rb.CopyHeaders(w)
 	if len(rb.buf) > 0 {
 		if _, err := w.Write(rb.buf); err != nil {
 			return err

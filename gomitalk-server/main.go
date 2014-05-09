@@ -81,6 +81,7 @@ func runHandler(resp http.ResponseWriter, req *http.Request,
 	var rb ResponseBuffer
 	err := fn(&rb, req)
 	if err == nil {
+		rb.CopyHeaders(resp)
 		http.ServeContent(resp, req, "", time.Time{}, &rb)
 	} else if e, ok := err.(*httpError); ok {
 		if e.status >= 500 {
