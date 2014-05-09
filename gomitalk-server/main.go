@@ -195,6 +195,7 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 	if err = sc.SetExtAudioFile(eaf); err != nil {
 		return err
 	}
+	defer sc.SetExtAudioFile(nil)
 
 	done := make(chan int)
 	err = sc.SetDone(func() {
@@ -210,7 +211,6 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 	}
 	select {
 	case <-done:
-		sc.Close()
 	case <-time.After(1 * time.Minute):
 		sc.Close()
 		return errors.New("timed out synthesizing speech")
