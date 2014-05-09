@@ -146,6 +146,13 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 		sampleRate = 48000.0
 	}
 
+	if req.Method == "POST" {
+		attachmentName := req.FormValue("attachment")
+		if attachmentName != "" {
+			resp.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", attachmentName))
+		}
+	}
+
 	sc, err := mactts.NewChannel(voice)
 	if err != nil {
 		return err
