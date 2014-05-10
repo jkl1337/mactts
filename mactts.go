@@ -48,6 +48,7 @@ import "errors"
 import "fmt"
 import "unsafe"
 import "reflect"
+import "encoding/binary"
 
 //export go_speechdone_cb
 func go_speechdone_cb(csc C.SpeechChannel, refcon C.long) {
@@ -213,6 +214,13 @@ func (vs VoiceSpec) Description() (vd VoiceDescription, err error) {
 		err = osError(oserr)
 		return
 	}
+	return
+}
+
+func (vs VoiceSpec) MarshalBinary() (data []byte, err error) {
+	data = make([]byte, 8)
+	binary.BigEndian.PutUint32(data, uint32(vs.creator))
+	binary.BigEndian.PutUint32(data[4:], uint32(vs.id))
 	return
 }
 

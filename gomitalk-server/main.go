@@ -14,6 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"crypto/md5"
+	"encoding/binary"
+	"encoding/hex"
+
 	"bitbucket.org/ww/goautoneg"
 	"github.com/jkl1337/mactts"
 )
@@ -84,10 +88,18 @@ func runHandler(resp http.ResponseWriter, req *http.Request,
 		rb.CopyHeaders(resp)
 		http.ServeContent(resp, req, "", time.Time{}, &rb)
 	} else if e, ok := err.(*httpError); ok {
-		if e.status >= 500 {
-			logError(req, err, nil)
+		if e.status == http.StatusNotModified {
+			rb.CopyHeaders(resp)
+			h := resp.Header()
+			delete(h, "Content-Type")
+			delete(h, "Content-Length")
+			resp.WriteHeader(http.StatusNotModified)
+		} else {
+			if e.status >= 500 {
+				logError(req, err, nil)
+			}
+			errfn(resp, req, e.status, e.err)
 		}
-		errfn(resp, req, e.status, e.err)
 	} else {
 		logError(req, err, nil)
 		errfn(resp, req, http.StatusInternalServerError, err)
@@ -114,6 +126,23 @@ type apiHandler func(resp http.ResponseWriter, req *http.Request) error
 
 func (h apiHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	runHandler(resp, req, h, handleJSONError)
+}
+
+// checkEtagDone returns true if we are certain that the request can be signaled as StatusNotModified.
+func checkEtagDone(req *http.Request, etag string) bool {
+	if ir := req.Header.Get("If-Range"); ir != "" && ir != etag {
+		return false
+	}
+
+	if inm := req.Header.Get("If-None-Match"); inm != "" {
+		if etag == "" {
+			return false
+		}
+		if inm == etag || inm == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 func speechHandler(resp http.ResponseWriter, req *http.Request) error {
@@ -157,27 +186,27 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 
 	// finally if no matcher hits, try to load a universally available default
 	if voiceSpec == nil {
-		voiceName = "Fred"
-		v := voices.FindByName(voiceName)
+		v := voices.FindByName("Fred")
 		if v == nil {
 			return &httpError{status: http.StatusNotFound, err: errors.New("unable to find suitable voice")}
 		}
+		voiceSpec = v.Spec()
 	}
 
-	sampleRate := 22050.0
+	sampleRate := 22050
 	switch req.FormValue("samplerate") {
 	case "8000":
-		sampleRate = 8000.0
+		sampleRate = 8000
 	case "11025":
-		sampleRate = 11025.0
+		sampleRate = 11025
 	case "16000":
-		sampleRate = 16000.0
+		sampleRate = 16000
 	case "32000":
-		sampleRate = 32000.0
+		sampleRate = 32000
 	case "44100":
-		sampleRate = 44100.0
+		sampleRate = 44100
 	case "48000":
-		sampleRate = 48000.0
+		sampleRate = 48000
 	}
 
 	if req.Method == "POST" {
@@ -213,7 +242,27 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 
 	resp.Header().Set("Content-Type", responseType)
 
-	af, err := newFileFunc(f, sampleRate, 1, 16)
+	// compute the Etag
+	etagBuf := make([]byte, 4, 24+len(msg))
+	binary.BigEndian.PutUint32(etagBuf, uint32(sampleRate))
+	vsb, _ := voiceSpec.MarshalBinary()
+	etagBuf = append(etagBuf, vsb...)
+	etagBuf = append(etagBuf, responseType...)
+	etagBuf = append(etagBuf, msg...)
+	etagSum := md5.New()
+	etagSum.Write(etagBuf)
+
+	etag := hex.EncodeToString(etagSum.Sum(make([]byte, 0, 16)))
+	resp.Header().Set("Etag", etag)
+
+	if done := checkEtagDone(req, etag); done {
+		// due to a bug in nginx, if the Last-Modified header is not set, the Etag will be ignored
+
+		resp.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+		return &httpError{status: http.StatusNotModified, err: nil}
+	}
+
+	af, err := newFileFunc(f, float64(sampleRate), 1, 16)
 	if err != nil {
 		return err
 	}
@@ -249,6 +298,9 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 		return errors.New("timed out synthesizing speech")
 	}
 
+	// due to a bug in nginx, if the Last-Modified header is not set, the Etag will be ignored
+	// this should hopefully stay within a minute of Date
+	resp.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 	return nil
 }
 
