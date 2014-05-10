@@ -290,9 +290,11 @@ func (vs VoiceSpec) Attributes() (VoiceAttributes, error) {
 }
 
 func disposeSpeechChannel(c *Channel) {
-	if c.csc != nil {
-		C.DisposeSpeechChannel(c.csc)
-	}
+	if c.csc == nil { return }
+
+	c.SetExtAudioFile(nil)
+	C.DisposeSpeechChannel(c.csc)
+	c.csc = nil
 }
 
 // NewChannel creates a speech synthesizer speech channel with option voice specification. If no voice is provided, the system voice is used.
@@ -392,14 +394,9 @@ func (c *Channel) Stop() error {
 }
 
 // Close closes the synthesizer speech channel and releases all internal resources.
-func (c *Channel) Close() error {
-	if c.csc == nil {
-		return nil
-	}
-	oserr := C.DisposeSpeechChannel(c.csc)
-	c.csc = nil
+func (c *Channel) Close() {
+	disposeSpeechChannel(c)
 	runtime.SetFinalizer(c, nil)
-	return osError(oserr)
 }
 
 // Busy indicates whether any speech channels are currently processing speech.
