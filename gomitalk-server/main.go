@@ -20,6 +20,7 @@ import (
 
 	"bitbucket.org/ww/goautoneg"
 	"github.com/jkl1337/mactts"
+	"runtime"
 )
 
 const (
@@ -342,7 +343,6 @@ func (vc *VoiceCollection) MarshalJSON() ([]byte, error) {
 // case it is treated as en-US. The gender may be the value GenderNone, which means that gender is ignored.
 // Match will return nil if it cannot match the parameters specified.
 func (vc *VoiceCollection) Match(gender mactts.Gender, locale string) *Voice {
-	locale = strings.Replace(locale, "-", "_", -1)
 	if locale == "" {
 		locale = "en_US"
 	}
