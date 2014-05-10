@@ -152,21 +152,24 @@ func NumVoices() (int, error) {
 type Gender int
 
 const (
-	GenderNeuter Gender = C.kNeuter
+	GenderNil    Gender = -1
+	GenderNeuter        = C.kNeuter
 	GenderFemale        = C.kFemale
 	GenderMale          = C.kMale
 )
 
 func (g Gender) String() string {
 	switch g {
+	case GenderNil:
+		return "nil"
 	case GenderNeuter:
-		return "Neuter"
+		return "neuter"
 	case GenderFemale:
-		return "Female"
+		return "female"
 	case GenderMale:
-		return "Male"
+		return "male"
 	}
-	return "(Invalid)"
+	return "(invalid)"
 }
 
 // VoiceDescription provides metadata for a speech synthesizer voice.

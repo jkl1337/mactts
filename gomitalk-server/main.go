@@ -122,12 +122,45 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 		return &httpError{status: http.StatusBadRequest, err: errors.New("missing `text` parameter")}
 	}
 
-	var voice *mactts.VoiceSpec
+	// name match is highest priority, followed by gender/locale match, and then fallback
+	var voiceSpec *mactts.VoiceSpec
 	voiceName := req.FormValue("voice")
 	if voiceName != "" {
-		v := voiceByName[voiceName]
-		if v != nil {
-			voice = &v.spec
+		v := voices.FindByName(voiceName)
+		if v == nil {
+			return &httpError{status: http.StatusNotFound, err: fmt.Errorf("voice `%s` not found", voiceName)}
+		}
+		voiceSpec = v.Spec()
+	} else {
+		var gender mactts.Gender
+		switch req.FormValue("gender") {
+		case "":
+			gender = mactts.GenderNil
+		case "male":
+			gender = mactts.GenderMale
+		case "neuter":
+			gender = mactts.GenderNeuter
+		case "female":
+			gender = mactts.GenderFemale
+		default:
+			return &httpError{status: http.StatusBadRequest, err: fmt.Errorf("invalid `gender` parameter")}
+		}
+		locale := req.FormValue("lang")
+		if gender != mactts.GenderNil || locale != "" {
+			v := voices.Match(gender, locale)
+			if v == nil {
+				return &httpError{status: http.StatusNotFound, err: errors.New("cannot find voice with specified gender and/or language")}
+			}
+			voiceSpec = v.Spec()
+		}
+	}
+
+	// finally if no matcher hits, try to load a universally available default
+	if voiceSpec == nil {
+		voiceName = "Fred"
+		v := voices.FindByName(voiceName)
+		if v == nil {
+			return &httpError{status: http.StatusNotFound, err: errors.New("unable to find suitable voice")}
 		}
 	}
 
@@ -154,7 +187,7 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 		}
 	}
 
-	sc, err := mactts.NewChannel(voice)
+	sc, err := mactts.NewChannel(voiceSpec)
 	if err != nil {
 		return err
 	}
@@ -219,16 +252,62 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 	return nil
 }
 
+// Voice is a representation of system voice metadata.
 type Voice struct {
-	spec   mactts.VoiceSpec
-	Name   string `json:"name"`
-	Locale string `json:"locale,omitempty"`
-	Gender string `json:"gender"`
-	Age    int    `json:"age"`
+	spec       mactts.VoiceSpec
+	gender     mactts.Gender
+	Name       string `json:"name"`
+	Locale     string `json:"locale,omitempty"`
+	Gender     string `json:"gender"`
+	Age        int    `json:"age"`
+	Identifier string `json:"id,omitempty"`
 }
 
-var voices []Voice
-var voiceByName map[string]*Voice
+// Spec returns the system VoiceSpec.
+func (v *Voice) Spec() *mactts.VoiceSpec {
+	return &v.spec
+}
+
+// VoiceCollection is a JSON marshalable and searchable container of system voices.
+type VoiceCollection struct {
+	voices      []Voice
+	voiceByName map[string]*Voice
+	json        []byte
+}
+
+func (vc *VoiceCollection) MarshalJSON() ([]byte, error) {
+	var err error
+	if len(vc.json) == 0 {
+		v := struct {
+			Voices []Voice `json:"voices"`
+		}{Voices: vc.voices}
+		vc.json, err = json.Marshal(&v)
+	}
+	return vc.json, err
+}
+
+// Match finds a matching voice for a gender and a locale. locale may be empty, in which
+// case it is treated as en-US. The gender may be the value GenderNone, which means that gender is ignored.
+// Match will return nil if it cannot match the parameters specified.
+func (vc *VoiceCollection) Match(gender mactts.Gender, locale string) *Voice {
+	locale = strings.Replace(locale, "-", "_", -1)
+	if locale == "" {
+		locale = "en_US"
+	}
+	for _, v := range vc.voices {
+		if (gender == mactts.GenderNil || gender == v.gender) && (locale == v.Locale) {
+			return &v
+		}
+	}
+	return nil
+}
+
+// FindByName finds a voice in the collection with the given system name.
+func (vc *VoiceCollection) FindByName(name string) *Voice {
+	return vc.voiceByName[name]
+}
+
+var voices VoiceCollection
 
 func loadVoices() error {
 	n, err := mactts.NumVoices()
@@ -246,32 +325,36 @@ func loadVoices() error {
 		if err != nil {
 			return nil
 		}
-		var locale string
+		var locale, identifier string
 		if attr, err := v.Attributes(); err == nil {
 			locale = attr.LocaleIdentifier()
+			identifier = attr.Identifier()
 		}
 		name := desc.Name()
 		vs[i] = Voice{
-			spec:   *v,
-			Name:   name,
-			Locale: locale,
-			Gender: desc.Gender().String(),
-			Age:    desc.Age(),
+			spec:       *v,
+			gender:     desc.Gender(),
+			Name:       name,
+			Locale:     locale,
+			Gender:     desc.Gender().String(),
+			Age:        desc.Age(),
+			Identifier: identifier,
 		}
 		vsm[name] = &vs[i]
 	}
-	voices = vs
-	voiceByName = vsm
+	voices.voices = vs
+	voices.voiceByName = vsm
 	return nil
 }
 
 func voicesHandler(resp http.ResponseWriter, req *http.Request) error {
-	v := struct {
-		Voices []Voice `json:"voices"`
-	}{Voices: voices}
 	resp.Header().Set("Content-Type", jsonMIMEType)
-	json.NewEncoder(resp).Encode(&v)
-	return nil
+	data, err := voices.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	_, err = resp.Write(data)
+	return err
 }
 
 func main() {
