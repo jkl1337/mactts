@@ -1,3 +1,5 @@
+// Package mactts provides access to the Speech Synthesis Manager on OSX and allows synthesis to the
+// system audio output device and to files (either disk files or handled with golang io interfaces).
 package mactts
 
 /*
@@ -71,14 +73,14 @@ type Channel struct {
 }
 
 var osErrorMap = map[int]error{
-	-240: errors.New("Could not find the specified speech synthesizer"),
-	-241: errors.New("Could not open another speech synthesizer channel"),
-	-242: errors.New("Speech synthesizer is still busy speaking"),
-	-243: errors.New("Output buffer is too small to hold result"),
-	-244: errors.New("Voice resource not found"),
-	-245: errors.New("Specified voice cannot be used with synthesizer"),
-	-246: errors.New("Pronunciation dictionary format error"),
-	-247: errors.New("Raw phoneme text contains invalid characters"),
+	-240: errors.New("could not find the specified speech synthesizer"),
+	-241: errors.New("could not open another speech synthesizer channel"),
+	-242: errors.New("speech synthesizer is still busy speaking"),
+	-243: errors.New("output buffer is too small to hold result"),
+	-244: errors.New("voice resource not found"),
+	-245: errors.New("specified voice cannot be used with synthesizer"),
+	-246: errors.New("pronunciation dictionary format error"),
+	-247: errors.New("raw phoneme text contains invalid characters"),
 }
 
 func osTypeToString(t C.OSType) string {
@@ -153,7 +155,9 @@ func NumVoices() (int, error) {
 type Gender int
 
 const (
+	// GenderNil is a sentinel value used to indicate no gender is provided.
 	GenderNil    Gender = -1
+	// GenderNeuter is a neutral voice (or a novelty voice with a humorous or whimsical quality).
 	GenderNeuter        = C.kNeuter
 	GenderFemale        = C.kFemale
 	GenderMale          = C.kMale
@@ -217,6 +221,7 @@ func (vs VoiceSpec) Description() (vd VoiceDescription, err error) {
 	return
 }
 
+// MarshalBinary encodes the VoiceSpec to binary form and returns the result.
 func (vs VoiceSpec) MarshalBinary() (data []byte, err error) {
 	data = make([]byte, 8)
 	binary.BigEndian.PutUint32(data, uint32(vs.creator))

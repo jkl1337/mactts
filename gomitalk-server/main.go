@@ -20,7 +20,6 @@ import (
 
 	"bitbucket.org/ww/goautoneg"
 	"github.com/jkl1337/mactts"
-	"runtime"
 )
 
 const (

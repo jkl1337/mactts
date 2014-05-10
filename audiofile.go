@@ -109,7 +109,7 @@ func newOutputFile(target ReadWriterAt, asbd *C.AudioStreamBasicDescription, fil
 	return &af, nil
 }
 
-// NewOutputWaveFile opens a CoreAudio WAVE file suitable for output to target
+// NewOutputWAVEFile opens a CoreAudio WAVE file suitable for output to target.
 //
 // rate is the sample rate, numchan is the number of channels in the output, and numbits is the number of bits per channel.
 // NOTE: In order to prevent unnecessary copying, the calls to target use buffers that are owned by CoreAudio. This means that
@@ -129,6 +129,11 @@ func NewOutputWAVEFile(target ReadWriterAt, rate float64, numchan int, numbits i
 	return newOutputFile(target, &asbd, C.kAudioFileWAVEType)
 }
 
+// NewOutputAACFile opens a CoreAudio MP4 encapsulated AAC file suitable for output to target.
+//
+// rate is the sample rate, numchan is the number of channels in the output, and numbits is the number of bits per channel.
+// NOTE: In order to prevent unnecessary copying, the calls to target use buffers that are owned by CoreAudio. This means that
+// slices should not be made of buffers that will outlive the call to the WriteAt method.
 func NewOutputAACFile(target ReadWriterAt, rate float64, numchan int, numbits int) (*AudioFile, error) {
 	asbd := C.AudioStreamBasicDescription{
 		mSampleRate:       C.Float64(rate),
