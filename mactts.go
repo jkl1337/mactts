@@ -63,6 +63,34 @@ func go_speechdone_cb(csc C.SpeechChannel, refcon C.long) {
 // VoiceSpec uniquely identifies a speech synthesizer voice on the system.
 type VoiceSpec C.VoiceSpec
 
+// Description provides access to the metadata for the voice.
+func (vs VoiceSpec) Description() (vd VoiceDescription, err error) {
+	oserr := C.GetVoiceDescription((*C.VoiceSpec)(&vs), (*C.VoiceDescription)(&vd), C.long(unsafe.Sizeof(vd)))
+	if oserr != 0 {
+		err = osError(oserr)
+		return
+	}
+	return
+}
+
+// Creator returns the synthesizer creator code for the voice.
+func (vs VoiceSpec) Creator() uint32 {
+	return uint32(vs.creator)
+}
+
+// Id returns the unique voice id (within the synthesizer) for voice.
+func (vs VoiceSpec) Id() uint32 {
+	return uint32(vs.id)
+}
+
+// MarshalBinary encodes the VoiceSpec to binary form and returns the result. It never returns an error.
+func (vs VoiceSpec) MarshalBinary() (data []byte, err error) {
+	data = make([]byte, 8)
+	binary.BigEndian.PutUint32(data, uint32(vs.creator))
+	binary.BigEndian.PutUint32(data[4:], uint32(vs.id))
+	return
+}
+
 // Channel is a independent channel resource for speech synthesis within the synthesizer.
 //
 // There is no predefined limit on the number of speech channels an application can create. However, system constraints on
@@ -209,24 +237,6 @@ func (vd *VoiceDescription) Gender() Gender {
 // Age is the approximate age in years of the individual represented by the voice.
 func (vd *VoiceDescription) Age() int {
 	return int(vd.age)
-}
-
-// Description provides access to the metadata for the voice.
-func (vs VoiceSpec) Description() (vd VoiceDescription, err error) {
-	oserr := C.GetVoiceDescription((*C.VoiceSpec)(&vs), (*C.VoiceDescription)(&vd), C.long(unsafe.Sizeof(vd)))
-	if oserr != 0 {
-		err = osError(oserr)
-		return
-	}
-	return
-}
-
-// MarshalBinary encodes the VoiceSpec to binary form and returns the result.
-func (vs VoiceSpec) MarshalBinary() (data []byte, err error) {
-	data = make([]byte, 8)
-	binary.BigEndian.PutUint32(data, uint32(vs.creator))
-	binary.BigEndian.PutUint32(data[4:], uint32(vs.id))
-	return
 }
 
 // VoiceAttributes wraps a CoreFoundation dictionary that contains additional metadata about a voice
