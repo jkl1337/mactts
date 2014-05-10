@@ -89,7 +89,8 @@ func runHandler(resp http.ResponseWriter, req *http.Request,
 		if rb.Header()["Last-Modified"] == nil {
 			rb.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 		}
-
+		// For nginx proxy cache, this allows the support of byte ranges. Not sure how to get around this on the nginx side.
+		rb.Header().Set("Accept-Ranges", "bytes")
 		rb.WriteTo(resp)
 	} else if e, ok := err.(*httpError); ok {
 		if e.status >= 500 {
