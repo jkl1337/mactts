@@ -16,6 +16,9 @@ import (
 
 	"bitbucket.org/ww/goautoneg"
 	"github.com/jkl1337/mactts"
+	"encoding/binary"
+	"crypto/md5"
+	"encoding/hex"
 )
 
 const (
@@ -25,6 +28,7 @@ const (
 
 var (
 	httpAddr = flag.String("http", ":8080", "Listen for HTTP connections on this address.")
+	useEtag = flag.Bool("etag", true, "Produce Etags for equivalent utterances.")
 )
 
 // stripPort removes the port specification from an address
@@ -113,6 +117,19 @@ type apiHandler func(resp http.ResponseWriter, req *http.Request) error
 
 func (h apiHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	runHandler(resp, req, h, handleJSONError)
+}
+
+// checkEtagDone returns true if we are certain that the request can be signaled as StatusNotModified.
+func checkEtagDone(req *http.Request, etag string) bool {
+	if inm := req.Header.Get("If-None-Match"); inm != "" {
+		if etag == "" {
+			return false
+		}
+		if inm == etag || inm == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 func speechHandler(resp http.ResponseWriter, req *http.Request) error {
@@ -204,6 +221,26 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 	}
 
 	resp.Header().Set("Content-Type", responseType)
+
+	if *useEtag {
+		// compute the Etag
+		etagBuf := make([]byte, 4, 24+len(msg))
+		binary.BigEndian.PutUint32(etagBuf, uint32(sampleRate))
+		vsb, _ := voiceSpec.MarshalBinary()
+		etagBuf = append(etagBuf, vsb...)
+		etagBuf = append(etagBuf, responseType...)
+		etagBuf = append(etagBuf, msg...)
+		etagSum := md5.New()
+		etagSum.Write(etagBuf)
+
+		etag := hex.EncodeToString(etagSum.Sum(make([]byte, 0, 16)))
+		resp.Header().Set("Etag", etag)
+
+		if done := checkEtagDone(req, etag); done {
+			resp.WriteHeader(http.StatusNotModified)
+			return nil
+		}
+	}
 
 	af, err := newFileFunc(f, float64(sampleRate), 1, 16)
 	if err != nil {

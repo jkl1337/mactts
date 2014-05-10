@@ -19,6 +19,12 @@ Now go to (http://localhost:8080/speech?text=Hello+World&voice=Hysterical) in yo
 
 An example
 
+Limitations
+===========
+
+The Mac OSX speech synthesis manager does not produce bit identical audio streams from one synthesis to the next. Precisely, it produces the same waveform data but there is an alignment difference of a few samples. This could probably be remedied by using AudioUnits and wrapping the audio to the nearest non-zero sample. Unless this is done, the server cannot be used for serving byte range requests. In order to support this now, a reverse proxy that can cache the output is required.
+To assist with this the server will optionally (default on) produce Etags that are computed on the selected voice and content type.
+
 Server API
 ==========
 The server API supports two endpoints, one for speech and one for information about the voices available:
