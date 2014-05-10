@@ -14,10 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"crypto/md5"
-	"encoding/binary"
-	"encoding/hex"
-
 	"bitbucket.org/ww/goautoneg"
 	"github.com/jkl1337/mactts"
 )
@@ -85,21 +81,12 @@ func runHandler(resp http.ResponseWriter, req *http.Request,
 	var rb ResponseBuffer
 	err := fn(&rb, req)
 	if err == nil {
-		rb.CopyHeaders(resp)
-		http.ServeContent(resp, req, "", time.Time{}, &rb)
+		rb.WriteTo(resp)
 	} else if e, ok := err.(*httpError); ok {
-		if e.status == http.StatusNotModified {
-			rb.CopyHeaders(resp)
-			h := resp.Header()
-			delete(h, "Content-Type")
-			delete(h, "Content-Length")
-			resp.WriteHeader(http.StatusNotModified)
-		} else {
-			if e.status >= 500 {
-				logError(req, err, nil)
-			}
-			errfn(resp, req, e.status, e.err)
+		if e.status >= 500 {
+			logError(req, err, nil)
 		}
+		errfn(resp, req, e.status, e.err)
 	} else {
 		logError(req, err, nil)
 		errfn(resp, req, http.StatusInternalServerError, err)
@@ -126,23 +113,6 @@ type apiHandler func(resp http.ResponseWriter, req *http.Request) error
 
 func (h apiHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	runHandler(resp, req, h, handleJSONError)
-}
-
-// checkEtagDone returns true if we are certain that the request can be signaled as StatusNotModified.
-func checkEtagDone(req *http.Request, etag string) bool {
-	if ir := req.Header.Get("If-Range"); ir != "" && ir != etag {
-		return false
-	}
-
-	if inm := req.Header.Get("If-None-Match"); inm != "" {
-		if etag == "" {
-			return false
-		}
-		if inm == etag || inm == "*" {
-			return true
-		}
-	}
-	return false
 }
 
 func speechHandler(resp http.ResponseWriter, req *http.Request) error {
@@ -215,13 +185,6 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 			resp.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", attachmentName))
 		}
 	}
-
-	sc, err := mactts.NewChannel(voiceSpec)
-	if err != nil {
-		return err
-	}
-	defer sc.Close()
-
 	f := resp.(*ResponseBuffer)
 
 	acceptMimeType := req.FormValue("type")
@@ -242,26 +205,6 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 
 	resp.Header().Set("Content-Type", responseType)
 
-	// compute the Etag
-	etagBuf := make([]byte, 4, 24+len(msg))
-	binary.BigEndian.PutUint32(etagBuf, uint32(sampleRate))
-	vsb, _ := voiceSpec.MarshalBinary()
-	etagBuf = append(etagBuf, vsb...)
-	etagBuf = append(etagBuf, responseType...)
-	etagBuf = append(etagBuf, msg...)
-	etagSum := md5.New()
-	etagSum.Write(etagBuf)
-
-	etag := hex.EncodeToString(etagSum.Sum(make([]byte, 0, 16)))
-	resp.Header().Set("Etag", etag)
-
-	if done := checkEtagDone(req, etag); done {
-		// due to a bug in nginx, if the Last-Modified header is not set, the Etag will be ignored
-
-		resp.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
-		return &httpError{status: http.StatusNotModified, err: nil}
-	}
-
 	af, err := newFileFunc(f, float64(sampleRate), 1, 16)
 	if err != nil {
 		return err
@@ -274,10 +217,15 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 	}
 	defer eaf.Close()
 
+	sc, err := mactts.NewChannel(voiceSpec)
+	if err != nil {
+		return err
+	}
+	defer sc.Close()
+
 	if err = sc.SetExtAudioFile(eaf); err != nil {
 		return err
 	}
-	defer sc.SetExtAudioFile(nil)
 
 	done := make(chan int)
 	err = sc.SetDone(func() {
@@ -294,13 +242,8 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 	select {
 	case <-done:
 	case <-time.After(1 * time.Minute):
-		sc.Close()
 		return errors.New("timed out synthesizing speech")
 	}
-
-	// due to a bug in nginx, if the Last-Modified header is not set, the Etag will be ignored
-	// this should hopefully stay within a minute of Date
-	resp.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 	return nil
 }
 
@@ -376,6 +319,7 @@ func loadVoices() error {
 		if err != nil {
 			return nil
 		}
+
 		var locale, identifier string
 		if attr, err := v.Attributes(); err == nil {
 			locale = attr.LocaleIdentifier()
