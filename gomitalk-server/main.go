@@ -85,6 +85,11 @@ func runHandler(resp http.ResponseWriter, req *http.Request,
 	var rb ResponseBuffer
 	err := fn(&rb, req)
 	if err == nil {
+		// nginx Etag handling breaks if Last-Modified is not set
+		if rb.Header()["Last-Modified"] == nil {
+			rb.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+		}
+
 		rb.WriteTo(resp)
 	} else if e, ok := err.(*httpError); ok {
 		if e.status >= 500 {
