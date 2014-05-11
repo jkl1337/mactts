@@ -19,9 +19,12 @@ import (
 	"encoding/binary"
 	"crypto/md5"
 	"encoding/hex"
+	"strconv"
+	"math"
 )
 
 const (
+	etagGeneration uint32 = 2
 	jsonMIMEType = "application/json; charset=utf-8"
 	textMIMEType = "text/plain; charset=utf-8"
 )
@@ -186,7 +189,7 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 		voiceSpec = v.Spec()
 	}
 
-	sampleRate := 22050
+	var sampleRate int
 	switch req.FormValue("samplerate") {
 	case "8000":
 		sampleRate = 8000
@@ -194,12 +197,38 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 		sampleRate = 11025
 	case "16000":
 		sampleRate = 16000
+	case "", "22050":
+		sampleRate = 22050
 	case "32000":
 		sampleRate = 32000
 	case "44100":
 		sampleRate = 44100
 	case "48000":
 		sampleRate = 48000
+	default:
+		return &httpError{status: http.StatusBadRequest, err: errors.New("invalid `samplerate` parameter")}
+	}
+
+	// default speaking rates vary for each voice. Retreiving them during initialization would be possible, but painful
+	// and probably unnecessary. A rate of 0 means default.
+	var rate uint16
+
+	if p := req.FormValue("rate"); p != "" {
+		pv, err := strconv.ParseUint(p, 10, 16)
+		if err != nil {
+			return &httpError{status: http.StatusBadRequest, err: errors.New("invalid `rate` parameter")}
+		}
+		rate = uint16(pv)
+	}
+
+	var pitch float64
+
+	if p := req.FormValue("pitch"); p != "" {
+		var err error
+		pitch, err = strconv.ParseFloat(p, 64)
+		if err != nil || math.IsNaN(pitch) || pitch <= 0 || pitch > 4096.0 {
+			return &httpError{status: http.StatusBadRequest, err: errors.New("invalid `pitch` parameter")}
+		}
 	}
 
 	if req.Method == "POST" {
@@ -230,8 +259,11 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 
 	if *useEtag {
 		// compute the Etag
-		etagBuf := make([]byte, 4, 24+len(msg))
-		binary.BigEndian.PutUint32(etagBuf, uint32(sampleRate))
+		etagBuf := make([]byte, 18, 48+len(msg))
+		binary.BigEndian.PutUint32(etagBuf, etagGeneration)
+		binary.BigEndian.PutUint32(etagBuf[4:], uint32(sampleRate))
+		binary.BigEndian.PutUint16(etagBuf[8:], rate)
+		binary.BigEndian.PutUint64(etagBuf[10:], math.Float64bits(pitch))
 		vsb, _ := voiceSpec.MarshalBinary()
 		etagBuf = append(etagBuf, vsb...)
 		etagBuf = append(etagBuf, responseType...)
@@ -239,7 +271,7 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 		etagSum := md5.New()
 		etagSum.Write(etagBuf)
 
-		etag := hex.EncodeToString(etagSum.Sum(make([]byte, 0, 16)))
+		etag := hex.EncodeToString(etagSum.Sum(nil))
 		resp.Header().Set("Etag", etag)
 
 		if done := checkEtagDone(req, etag); done {
@@ -265,6 +297,17 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 		return err
 	}
 	defer sc.Close()
+
+	if rate != 0 {
+		if err := sc.SetRate(int(rate)); err != nil {
+			return err
+		}
+	}
+	if pitch != 0.0 {
+		if err := sc.SetPitchBase(pitch); err != nil {
+			return err
+		}
+	}
 
 	if err = sc.SetExtAudioFile(eaf); err != nil {
 		return err
