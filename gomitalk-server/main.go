@@ -226,7 +226,7 @@ func speechHandler(resp http.ResponseWriter, req *http.Request) error {
 	if p := req.FormValue("pitch"); p != "" {
 		var err error
 		pitch, err = strconv.ParseFloat(p, 64)
-		if err != nil || math.IsNaN(pitch) || pitch <= 0 || pitch > 4096.0 {
+		if err != nil || math.IsNaN(pitch) || pitch < 0 || pitch > 4096.0 {
 			return &httpError{status: http.StatusBadRequest, err: errors.New("invalid `pitch` parameter")}
 		}
 	}
