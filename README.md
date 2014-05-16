@@ -15,7 +15,7 @@ go get github.com/jkl1337/mactts/gomitalk-server
 
 The command gomitalk-server can now be run from the command line. The default port is 8080.
 
-Now go to (http://localhost:8080/speech?text=Hello+World&voice=Hysterical) in your browser. You should get a 22,050 Hz 16-bit WAVE file sent to your browser.
+Now go to (http://localhost:8080/say?text=Hello+World&voice=Hysterical) in your browser. You should get a 22,050 Hz 16-bit WAVE file sent to your browser.
 
 Limitations
 ===========
@@ -28,8 +28,8 @@ Server API
 The server API supports two endpoints, one for speech and one for information about the voices available:
 
 ```
-GET /speech{?text,lang,gender,samplerate,type,attachment}
-POST /speech (application/x-www-form-urlencoded or multipart/form-data)
+GET /say{?text,lang,gender,samplerate,type,attachment}
+POST /say (application/x-www-form-urlencoded or multipart/form-data)
 
 text : The UTF-8 encoded message text to synthesize as speech.
 lang : A locale identifier {language_territory} such as en-US, en-GB that is used to match against the
