@@ -3,7 +3,7 @@ mactts
 [![GoDoc](https://godoc.org/github.com/jkl1337/mactts?status.png)](https://godoc.org/github.com/jkl1337/mactts)
 
 mactts is a small Golang wrapper for the Mac OSX Speech Synthesis Manager Carbon API.
-This was originally created for the production of TTS speech server demo. While newer versions of Mac OSX ship with the typical Nuance Vocalizer® voices available from many places, there is no matching the utility of the original MacInTalk Pro voices. And when you need them and don't have a real Mac handy, what is one to do?
+This was originally created for a TTS speech server demo and as a golang `http` exercise. While newer versions of Mac OSX ship with the typical Nuance Vocalizer® voices available from many places, there is no matching the utility of the original MacInTalk Pro voices. When you need them and don't have a real Mac handy, what is one to do?
 
 Usage
 =====
@@ -16,8 +16,6 @@ go get github.com/jkl1337/mactts/gomitalk-server
 The command gomitalk-server can now be run from the command line. The default port is 8080.
 
 Now go to (http://localhost:8080/speech?text=Hello+World&voice=Hysterical) in your browser. You should get a 22,050 Hz 16-bit WAVE file sent to your browser.
-
-An example
 
 Limitations
 ===========
@@ -55,5 +53,4 @@ Returns a JSON object with names, languages, and genders of available voices on 
 
 TODO
 ====
-- Web frontend API
 - Provide MP4 and Vorbis output so the audio tag can be used on all browsers with compression.
