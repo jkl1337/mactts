@@ -19,6 +19,7 @@ extern CFStringRef kSpeechVoiceGender;
 extern CFStringRef kSpeechVoiceLocaleIdentifier;
 
 extern void go_speechdone_cb(SpeechChannel csc, long refcon);
+extern void go_speechphoneme_cb(SpeechChannel csc, long refcon, short phonemeOpcode);
 
 // cfstring_utf8_length returns the number of characters successfully converted to UTF-8 and
 // the bytes required to store them.
@@ -60,8 +61,19 @@ func go_speechdone_cb(csc C.SpeechChannel, refcon C.long) {
 	}
 }
 
+//export go_speechphoneme_cb
+func go_speechphoneme_cb(csc C.SpeechChannel, refcon C.long, phonemeOpcode C.short) {
+	c := (*Channel)(unsafe.Pointer(uintptr(refcon)))
+	if c.phonemeCb != nil {
+		c.phonemeCb(PhonemeCode(phonemeOpcode))
+	}
+}
+
 // VoiceSpec uniquely identifies a speech synthesizer voice on the system.
 type VoiceSpec C.VoiceSpec
+
+// PhonemeCode is a Macintosh Speech Synthesis Manager Phoneme Code.
+type PhonemeCode C.short
 
 // Description provides access to the metadata for the voice.
 func (vs VoiceSpec) Description() (vd VoiceDescription, err error) {
@@ -98,6 +110,7 @@ func (vs VoiceSpec) MarshalBinary() (data []byte, err error) {
 type Channel struct {
 	csc  C.SpeechChannel
 	done func()
+	phonemeCb func(PhonemeCode)
 }
 
 var osErrorMap = map[int]error{
@@ -325,6 +338,17 @@ func (c *Channel) SetDone(done func()) error {
 		return osError(oserr)
 	}
 	c.done = done
+	return nil
+}
+
+// SetPhonemeCb sets a callback function invoked before each phoneme is synthesized.
+func (c *Channel) SetPhonemeCb(phonemeCb func(PhonemeCode)) error {
+	cbp := C.go_speechphoneme_cb
+	oserr := C.mactts_set_property_ptr(c.csc, C.kSpeechPhonemeCallBack, cbp)
+	if oserr != 0 {
+		return osError(oserr)
+	}
+	c.phonemeCb = phonemeCb
 	return nil
 }
 
