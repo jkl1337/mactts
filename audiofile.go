@@ -179,6 +179,12 @@ type ExtAudioFile struct {
 	af   *AudioFile
 }
 
+// Tell returns the file offset for the internal ExtAudioFile in sample frames.
+func (eaf *ExtAudioFile) Tell() (ofs int64, err error) {
+	err = osStatus(C.ExtAudioFileTell(eaf.ceaf, (*C.SInt64)(&ofs)))
+	return
+}
+
 // Close closes the ExtAudioFile and releases the reference to it.
 func (eaf *ExtAudioFile) Close() error {
 	if eaf.ceaf == nil {
